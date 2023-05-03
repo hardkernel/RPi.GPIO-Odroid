@@ -364,6 +364,16 @@ static int  gpioToShiftReg (int pin)
     return  -1;
 }
 
+static int gpioToShiftRegBy32 (int pin)
+{
+    return pin % 32;
+}
+
+static int gpioToShiftRegBy16 (int pin)
+{
+    return pin % 16;
+}
+
 //
 // offset to the GPIO Function register
 //
@@ -545,6 +555,50 @@ int wiringPiSetupOdroid (void)
         adcFds[0] = open(piAinNode0_xu, O_RDONLY);
         adcFds[1] = open(piAinNode1_xu, O_RDONLY);
     }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        mmapped_cru[0] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_PMU_CRU_BASE);
+        mmapped_cru[1] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_CRU_BASE);
+
+        mmapped_grf[0] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_PMU_GRF_BASE);
+        mmapped_grf[1] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_SYS_GRF_BASE);
+
+        mmapped_gpio[0] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_GPIO_0_BASE);
+        mmapped_gpio[1] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_GPIO_1_BASE);
+        mmapped_gpio[2] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_GPIO_2_BASE);
+        mmapped_gpio[3] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_GPIO_3_BASE);
+        mmapped_gpio[4] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_GPIO_4_BASE);
+
+        if ((mmapped_cru[0] == MAP_FAILED) || (mmapped_cru[1] == MAP_FAILED)) {
+            return wiringPiFailure(WPI_ALMOST, "wpSetupOdroid: mmap (CRU) failed: %s\n", strerror(errno));
+        } else {
+            cru[0] = (uint32_t *) mmapped_cru[0];
+            cru[1] = (uint32_t *) mmapped_cru[1];
+        }
+
+        if ((mmapped_grf[0] == MAP_FAILED) || (mmapped_grf[1] == MAP_FAILED)) {
+            return wiringPiFailure(WPI_ALMOST, "wpSetupOdroid: mmap (GRF) failed: %s\n", strerror(errno));
+        } else {
+            grf[0] = (uint32_t *) mmapped_grf[0];
+            grf[1] = (uint32_t *) mmapped_grf[1];
+        }
+
+        if ((mmapped_gpio[0] == MAP_FAILED) ||
+            (mmapped_gpio[1] == MAP_FAILED) ||
+            (mmapped_gpio[2] == MAP_FAILED) ||
+            (mmapped_gpio[3] == MAP_FAILED) ||
+            (mmapped_gpio[4] == MAP_FAILED)) {
+            return wiringPiFailure(WPI_ALMOST, "wpSetupOdroid: mmap (GPIO) failed: %s\n", strerror(errno));
+        } else {
+            gpioarr[0] = (uint32_t *) mmapped_gpio[0];
+            gpioarr[1] = (uint32_t *) mmapped_gpio[1];
+            gpioarr[2] = (uint32_t *) mmapped_gpio[2];
+            gpioarr[3] = (uint32_t *) mmapped_gpio[3];
+            gpioarr[4] = (uint32_t *) mmapped_gpio[4];
+        }
+        adcFds[0] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage7_raw", O_RDONLY);
+        adcFds[1] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage6_raw", O_RDONLY);
+    }
 
     return 0;
 }
@@ -556,13 +610,71 @@ void wiringPiCleanupOdroid (void)
 }
 
 /*
+ * setIomuxMode:
+ *	Sets the mode of a Iomux (ODROID-M1)
+ *********************************************************************************
+ */
+void setIomuxMode (int pin, int mode)
+{
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
+
+    bank = pin / M1_GPIO_SIZE;
+    bitNum = pin - (bank * M1_GPIO_SIZE);
+    group = bitNum / 8; // A or B or C or D
+    bitInByte = (pin - (bank * M1_GPIO_SIZE)) % 8;
+
+    offset = (bank == 0 ? 0 : bank-1) * 0x20 + group * 0x8;
+    offset += (bitInByte / 4 == 0) ? 0x0 : 0x4;
+
+    // Common IOMUX Funtion 1 : GPIO (3'h0)
+    switch (mode) {
+        case M1_FUNC_GPIO: // Common IOMUX Function 1_GPIO (3'h0)
+            if (bank == 0) {
+                offset += M1_PMU_GRF_IOMUX_OFFSET;
+                target = *(grf[0] + (offset >> 2));
+                target |= (0x7 << ((bitInByte % 4) * 4 + 16));
+                target &= ~(0x7 << ((bitInByte % 4) * 4)); // ~0x07 = 3'h0
+                *(grf[0] + (offset >> 2)) = target;
+            }
+            else {
+                offset += M1_SYS_GRF_IOMUX_OFFSET;
+                target = *(grf[1] + (offset >> 2));
+                target |= (0x7 << ((bitInByte % 4) * 4 + 16));
+                target &= ~(0x7 << ((bitInByte % 4) * 4));
+                *(grf[1] + (offset >> 2)) = target;
+            }
+            break;
+        case M1_FUNC_PWM:
+            if (bank == 0) {
+                offset += M1_PMU_GRF_IOMUX_OFFSET;
+                target = *(grf[0] + (offset >> 2));
+                target |= (0x7 << ((bitInByte % 4) * 4 + 16));
+                target |= (0x4 << ((bitInByte % 4) * 4)); // gpio0 b5/b6: 3'h100
+                *(grf[0] + (offset >> 2)) = target;
+            }
+            else {
+                offset += M1_SYS_GRF_IOMUX_OFFSET;
+                target = *(grf[1] + (offset >> 2));
+                target |= (0x7 << ((bitInByte % 4) * 4 + 16));
+                target |= (0x5 << ((bitInByte % 4) * 4)); // gpio3 b2: 3'h101
+                *(grf[1] + (offset >> 2)) = target;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+/*
  * pinMode:
  *	Sets the mode of a pin to be input, output or PWM output
  *********************************************************************************
  */
-
 void pinModeOdroid (int pin, int mode)
 {
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
     int shift;
     //Odroid: For our purposes pin comes in as gpio, original code converted
     //pin to gpio and kept origPin as pin#
@@ -581,6 +693,18 @@ void pinModeOdroid (int pin, int mode)
                 *(gpio + gpioToGPFSELReg(pin)) &= ~(0xF << shift);
             else
                 *(gpio1 + gpioToGPFSELReg(pin)) &= ~(0xF << shift);
+        }
+        else if (piModel == PI_MODEL_ODROIDM1)
+        {
+            bank = pin / M1_GPIO_SIZE;
+            bitNum = pin - (bank * M1_GPIO_SIZE);
+            offset = bitNum / 16 == 0? M1_GPIO_DIR_OFFSET : M1_GPIO_DIR_OFFSET + 0x4;
+            target = *(gpioarr[bank] + (offset >> 2));
+            target |= (1 << (gpioToShiftRegBy16(pin) + 16));
+
+            setIomuxMode(pin, M1_FUNC_GPIO);
+            target &= ~(1 << (gpioToShiftRegBy16(pin)));
+            *(gpioarr[bank] + (offset >> 2)) = target;
         }
         else
             wiringPiFailure(WPI_FATAL, "pinModeOdroid: This code should only be called for Odroid\n");
@@ -605,6 +729,18 @@ void pinModeOdroid (int pin, int mode)
                 *(gpio1 + gpioToGPFSELReg(pin)) &= ~(0xF << shift);
                 *(gpio1 + gpioToGPFSELReg(pin)) |= (0x1 << shift);
             }
+        }
+        else if (piModel == PI_MODEL_ODROIDM1)
+        {
+            bank = pin / M1_GPIO_SIZE;
+            bitNum = pin - (bank * M1_GPIO_SIZE);
+            offset = bitNum / 16 == 0? M1_GPIO_DIR_OFFSET : M1_GPIO_DIR_OFFSET + 0x4;
+            target = *(gpioarr[bank] + (offset >> 2));
+            target |= (1 << (gpioToShiftRegBy16(pin) + 16));
+
+            setIomuxMode(pin, M1_FUNC_GPIO);
+            target |= (1 << (gpioToShiftRegBy16(pin)));
+            *(gpioarr[bank] + (offset >> 2)) = target;
         }
         else
             wiringPiFailure(WPI_FATAL, "pinModeOdroid: This code should only be called for Odroid\n");
@@ -635,6 +771,9 @@ void pinModeOdroid (int pin, int mode)
 
 void pullUpDnControlOdroid (int pin, int pud)
 {
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
+
     if (piModel == PI_MODEL_ODROIDC ||
         piModel == PI_MODEL_ODROIDC2 ||
         piModel == PI_MODEL_ODROIDN2 ||
@@ -688,6 +827,71 @@ void pullUpDnControlOdroid (int pin, int pud)
                 *(gpio1 + gpioToPUPDReg(pin)) &= ~(0x3 << shift);
         }
     }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        bank = pin / M1_GPIO_SIZE;
+        bitNum = pin - (bank * M1_GPIO_SIZE);
+        group = bitNum / 8;
+        bitInByte = bitNum % 8;
+        offset = (bank == 0) ? M1_PMU_GRF_PUPD_OFFSET + (group * 0x4) : M1_SYS_GRF_PUPD_OFFSET + (group * 0x4) + ((bank - 1) * 0x10);
+
+        switch (pud) {
+            case PUD_UP:
+                if (bank == 0)
+                {
+                    target = *(grf[0] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    target |= (0x1 << (bitInByte * 2));
+                    *(grf[0] + (offset >> 2)) = target;
+                }
+                else
+                {
+                    target = *(grf[1] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    target |= (0x1 << (bitInByte * 2));
+                    *(grf[1] + (offset >> 2)) = target;
+                }
+                break;
+            case PUD_DOWN:
+                if (bank == 0)
+                {
+                    target = *(grf[0] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    target |= (0x2 << (bitInByte * 2));
+                    *(grf[0] + (offset >> 2)) = target;
+                }
+                else
+                {
+                    target = *(grf[1] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    target |= (0x2 << (bitInByte * 2));
+                    *(grf[1] + (offset >> 2)) = target;
+                }
+                break;
+            case PUD_OFF:
+                if (bank == 0)
+                {
+                    target = *(grf[0] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    *(grf[0] + (offset >> 2)) = target;
+                }
+                else
+                {
+                    target = *(grf[1] + (offset >> 2));
+                    target |= (0x3 << ((bitInByte * 2) + 16));
+                    target &= ~(0x3 << (bitInByte *2));
+                    *(grf[1] + (offset >> 2)) = target;
+                }
+                break;
+            default:
+                break;
+        }
+    }
     else
         wiringPiFailure(WPI_FATAL, "pullUpDnControlOdroid: This code should only be called for Odroid\n");
 }
@@ -700,6 +904,8 @@ void pullUpDnControlOdroid (int pin, int pud)
 
 int digitalReadOdroid (int pin)
 {
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
 
     if (piModel == PI_MODEL_ODROIDC ||
         piModel == PI_MODEL_ODROIDC2 ||
@@ -718,6 +924,12 @@ int digitalReadOdroid (int pin)
         else
             return *(gpio1 + gpioToGPLEVReg(pin)) & (1 << gpioToShiftReg(pin)) ? HIGH : LOW;
     }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        bank = pin / M1_GPIO_SIZE;
+
+        return *(gpioarr[bank] + (M1_GPIO_GET_OFFSET >> 2)) & (1 << gpioToShiftRegBy32(pin)) ? HIGH : LOW;
+    }
     else
         wiringPiFailure(WPI_FATAL, "digitalReadOdroid: This code should only be called for Odroid\n");
 
@@ -732,6 +944,8 @@ int digitalReadOdroid (int pin)
 
 void digitalWriteOdroid (int pin, int value)
 {
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
 
     if (piModel == PI_MODEL_ODROIDC ||
         piModel == PI_MODEL_ODROIDC2 ||
@@ -760,6 +974,28 @@ void digitalWriteOdroid (int pin, int value)
                 *(gpio1 + gpioToGPLEVReg(pin)) |= (1 << gpioToShiftReg(pin));
         }
     }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        bank = pin / M1_GPIO_SIZE;
+        bitNum = pin - (bank * M1_GPIO_SIZE);
+        offset = (bitNum / 16 == 0 ? M1_GPIO_SET_OFFSET : M1_GPIO_SET_OFFSET + 0x04);
+
+        target = *(gpioarr[bank] + (offset >> 2));
+        target |= (1 << (gpioToShiftRegBy16(pin) + 16));
+
+        switch (value) {
+            case LOW:
+                target &= ~(1 << gpioToShiftRegBy16(pin));
+                *(gpioarr[bank] + (offset >> 2)) = target;
+                break;
+            case HIGH:
+                target |= (1<< gpioToShiftRegBy16(pin));
+                *(gpioarr[bank] + (offset >> 2)) = target;
+                break;
+            default:
+                break;
+        }
+    }
     else
         wiringPiFailure(WPI_FATAL, "digitalWriteOdroid: This code should only be called for Odroid\n");
 }
@@ -783,7 +1019,8 @@ int analogReadOdroid (int pin)
         piModel == PI_MODEL_ODROIDC2 ||
         piModel == PI_MODEL_ODROIDXU_34 ||
         piModel == PI_MODEL_ODROIDN2 ||
-        piModel == PI_MODEL_ODROIDC4)
+        piModel == PI_MODEL_ODROIDC4 ||
+        piModel == PI_MODEL_ODROIDM1)
     {
         if (pin < 2)
         {
@@ -822,6 +1059,9 @@ void analogWriteOdroid (int pin, int value)
 
 int pinGetModeOdroid (int pin)
 {
+    uint32_t offset, target;
+    uint8_t bank, bitNum, bitInByte, group;
+
     int shift;
     int rwbit, regval, retval=0;
     //Odroid: pin comes in as gpio
@@ -844,6 +1084,23 @@ int pinGetModeOdroid (int pin)
             regval = (*(gpio1 + gpioToGPFSELReg(pin)));
         rwbit = regval & (0x1 << shift);
         retval=((rwbit!=0) ? 1 : 0);
+    }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        bank = pin / M1_GPIO_SIZE;
+        bitNum = pin - (bank * M1_GPIO_SIZE);
+
+        if (bitNum / 16 == 0)
+            offset = (M1_GPIO_DIR_OFFSET >> 2);
+        else
+            offset = ((M1_GPIO_DIR_OFFSET + 0x4) >> 2);
+
+        regval = *(gpioarr[bank] + offset);
+
+        rwbit = regval & (1 << gpioToShiftRegBy16(bitNum));
+
+        retval = ((rwbit!=0) ? 1 : 0);
+
     }
     else
         wiringPiFailure(WPI_FATAL, "pinGetModeOdroid: This code should only be called for Odroid\n");
@@ -900,6 +1157,15 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS905X3";
     }
+    else if (strcasestr(hardware, "ODROID-M1") != NULL)
+    {
+        piModel = PI_MODEL_ODROIDM1;
+        info->type = "ODROID-M1";
+        info->p1_revision = 3;
+        info->ram = "4096M/8192M";
+        info->manufacturer = "Hardkernel";
+        info->processor = "RK3568";
+    }
     return;
 }
 
@@ -929,5 +1195,10 @@ void setMappingPtrsOdroid(void)
     {
         pin_to_gpio = (const int(*)[41]) & physToGpioOdroidC4;
         bcm_to_odroidgpio = &bcmToOGpioOdroidC4;
+    }
+    else if (piModel == PI_MODEL_ODROIDM1)
+    {
+        pin_to_gpio = (const int(*)[41]) & physToGpioOdroidM1;
+        bcm_to_odroidgpio = &bcmToOGpioOdroidM1;
     }
 }
