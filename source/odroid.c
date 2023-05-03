@@ -56,6 +56,8 @@
 //		Added in the 2 UART pins
 //		Change maxPins to numPins to more accurately reflect purpose
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -862,7 +864,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS805";
     }
-    else if (strcmp(hardware, "ODROID-C2") == 0)
+    else if (strcasestr(hardware, "ODROID-C2") != NULL)
     {
         piModel = PI_MODEL_ODROIDC2;
         info->p1_revision = 3;
@@ -871,7 +873,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS905";
     }
-    else if (strcmp(hardware, "ODROID-XU4") == 0)
+    else if (strcasestr(hardware, "ODROID-XU") != NULL)
     {
         piModel = PI_MODEL_ODROIDXU_34;
         info->type = "ODROID-XU3/4";
@@ -880,7 +882,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "EXY5422";
     }
-    else if (strcmp(hardware, "ODROID-N2") == 0)
+    else if (strcasestr(hardware, "ODROID-N2") != NULL)
     {
         piModel = PI_MODEL_ODROIDN2;
         info->type = "ODROID-N2";
@@ -889,7 +891,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS922X";
     }
-    else if (strcmp(hardware, "ODROID-C4") == 0)
+    else if (strcasestr(hardware, "ODROID-C4") != NULL)
     {
         piModel = PI_MODEL_ODROIDC4;
         info->type = "ODROID-C4";

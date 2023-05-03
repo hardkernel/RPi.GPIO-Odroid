@@ -50,14 +50,15 @@ int get_rpi_info(rpi_info *info)
          odroid_found = 0;
       }
       else {  //Check for Odroid
-         if (strstr(hardware, "Hardkernel"))
-            sscanf(buffer, "Hardware	: Hardkernel %s", hardware);
+         if ((fp = fopen("/proc/device-tree/model", "r")) == NULL)
+           return -1;
+         fgets(buffer, sizeof(buffer), fp);
+         sscanf(buffer, "Hardkernel %s", hardware);
          if (strstr(hardware, "ODROID")) {
             odroid_found = found = 1;
             setInfoOdroid(hardware, (void *)info);
         }
       }
-      sscanf(buffer, "Revision	: %s", revision);
    }
    fclose(fp);
 
