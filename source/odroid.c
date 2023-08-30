@@ -555,7 +555,8 @@ int wiringPiSetupOdroid (void)
         adcFds[0] = open(piAinNode0_xu, O_RDONLY);
         adcFds[1] = open(piAinNode1_xu, O_RDONLY);
     }
-    else if (piModel == PI_MODEL_ODROIDM1)
+    else if (piModel == PI_MODEL_ODROIDM1 ||
+             piModel == PI_MODEL_ODROIDM1S)
     {
         mmapped_cru[0] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_PMU_CRU_BASE);
         mmapped_cru[1] = mmap(0, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, M1_CRU_BASE);
@@ -596,8 +597,15 @@ int wiringPiSetupOdroid (void)
             gpioarr[3] = (uint32_t *) mmapped_gpio[3];
             gpioarr[4] = (uint32_t *) mmapped_gpio[4];
         }
-        adcFds[0] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage7_raw", O_RDONLY);
-        adcFds[1] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage6_raw", O_RDONLY);
+
+        if (piModel == PI_MODEL_ODROIDM1) {
+            adcFds[0] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage7_raw", O_RDONLY);
+            adcFds[1] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage6_raw", O_RDONLY);
+        }
+        else if (piModel == PI_MODEL_ODROIDM1S) {
+            adcFds[0] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage3_raw", O_RDONLY);
+            adcFds[1] = open("/sys/devices/platform/fe720000.saradc/iio:device0/in_voltage2_raw", O_RDONLY);
+        }
     }
 
     return 0;
@@ -694,7 +702,8 @@ void pinModeOdroid (int pin, int mode)
             else
                 *(gpio1 + gpioToGPFSELReg(pin)) &= ~(0xF << shift);
         }
-        else if (piModel == PI_MODEL_ODROIDM1)
+        else if (piModel == PI_MODEL_ODROIDM1 ||
+                 piModel == PI_MODEL_ODROIDM1S)
         {
             bank = pin / M1_GPIO_SIZE;
             bitNum = pin - (bank * M1_GPIO_SIZE);
@@ -730,7 +739,8 @@ void pinModeOdroid (int pin, int mode)
                 *(gpio1 + gpioToGPFSELReg(pin)) |= (0x1 << shift);
             }
         }
-        else if (piModel == PI_MODEL_ODROIDM1)
+        else if (piModel == PI_MODEL_ODROIDM1 ||
+                 piModel == PI_MODEL_ODROIDM1S)
         {
             bank = pin / M1_GPIO_SIZE;
             bitNum = pin - (bank * M1_GPIO_SIZE);
@@ -827,7 +837,8 @@ void pullUpDnControlOdroid (int pin, int pud)
                 *(gpio1 + gpioToPUPDReg(pin)) &= ~(0x3 << shift);
         }
     }
-    else if (piModel == PI_MODEL_ODROIDM1)
+    else if (piModel == PI_MODEL_ODROIDM1 ||
+             piModel == PI_MODEL_ODROIDM1S)
     {
         bank = pin / M1_GPIO_SIZE;
         bitNum = pin - (bank * M1_GPIO_SIZE);
@@ -924,7 +935,8 @@ int digitalReadOdroid (int pin)
         else
             return *(gpio1 + gpioToGPLEVReg(pin)) & (1 << gpioToShiftReg(pin)) ? HIGH : LOW;
     }
-    else if (piModel == PI_MODEL_ODROIDM1)
+    else if (piModel == PI_MODEL_ODROIDM1 ||
+             piModel == PI_MODEL_ODROIDM1S)
     {
         bank = pin / M1_GPIO_SIZE;
 
@@ -974,7 +986,8 @@ void digitalWriteOdroid (int pin, int value)
                 *(gpio1 + gpioToGPLEVReg(pin)) |= (1 << gpioToShiftReg(pin));
         }
     }
-    else if (piModel == PI_MODEL_ODROIDM1)
+    else if (piModel == PI_MODEL_ODROIDM1 ||
+             piModel == PI_MODEL_ODROIDM1S)
     {
         bank = pin / M1_GPIO_SIZE;
         bitNum = pin - (bank * M1_GPIO_SIZE);
@@ -1020,7 +1033,8 @@ int analogReadOdroid (int pin)
         piModel == PI_MODEL_ODROIDXU_34 ||
         piModel == PI_MODEL_ODROIDN2 ||
         piModel == PI_MODEL_ODROIDC4 ||
-        piModel == PI_MODEL_ODROIDM1)
+        piModel == PI_MODEL_ODROIDM1 ||
+        piModel == PI_MODEL_ODROIDM1S)
     {
         if (pin < 2)
         {
@@ -1085,7 +1099,8 @@ int pinGetModeOdroid (int pin)
         rwbit = regval & (0x1 << shift);
         retval=((rwbit!=0) ? 1 : 0);
     }
-    else if (piModel == PI_MODEL_ODROIDM1)
+    else if (piModel == PI_MODEL_ODROIDM1 ||
+             piModel == PI_MODEL_ODROIDM1S)
     {
         bank = pin / M1_GPIO_SIZE;
         bitNum = pin - (bank * M1_GPIO_SIZE);
@@ -1166,6 +1181,15 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "RK3568";
     }
+    else if (strcmp(hardware, "ODROID-M1S") == 0)
+    {
+        piModel = PI_MODEL_ODROIDM1S;
+        info->type = "ODROID-M1S";
+        info->p1_revision = 3;
+        info->ram = "4096M/8192M";
+        info->manufacturer = "Hardkernel";
+        info->processor = "RK3566";
+    }
     return;
 }
 
@@ -1200,5 +1224,10 @@ void setMappingPtrsOdroid(void)
     {
         pin_to_gpio = (const int(*)[41]) & physToGpioOdroidM1;
         bcm_to_odroidgpio = &bcmToOGpioOdroidM1;
+    }
+    else if (piModel == PI_MODEL_ODROIDM1S)
+    {
+        pin_to_gpio = (const int(*)[41]) & physToGpioOdroidM1S;
+        bcm_to_odroidgpio = &bcmToOGpioOdroidM1S;
     }
 }
