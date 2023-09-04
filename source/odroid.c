@@ -1121,7 +1121,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS805";
     }
-    else if (strcasestr(hardware, "ODROID-C2") != NULL)
+    else if (strcmp(hardware, "ODROID-C2") == 0)
     {
         piModel = PI_MODEL_ODROIDC2;
         info->p1_revision = 3;
@@ -1148,7 +1148,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS922X";
     }
-    else if (strcasestr(hardware, "ODROID-C4") != NULL)
+    else if (strcmp(hardware, "ODROID-C4") == 0)
     {
         piModel = PI_MODEL_ODROIDC4;
         info->type = "ODROID-C4";
@@ -1157,7 +1157,7 @@ void setInfoOdroid(char *hardware, void *vinfo)
         info->manufacturer = "Hardkernel";
         info->processor = "AMLS905X3";
     }
-    else if (strcasestr(hardware, "ODROID-M1") != NULL)
+    else if (strcmp(hardware, "ODROID-M1") == 0)
     {
         piModel = PI_MODEL_ODROIDM1;
         info->type = "ODROID-M1";
