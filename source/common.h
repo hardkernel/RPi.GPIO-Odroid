@@ -20,6 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifndef __COMMON_H
+#define __COMMON_H
+
 #include "cpuinfo.h"
 
 #define MODE_UNKNOWN -1
@@ -30,16 +33,18 @@ SOFTWARE.
 #define I2C          42
 #define PWM          43
 
-int gpio_mode;
+extern int gpio_mode;
 #define MAXPINCOUNT 40  //odroid added
-const int pin_to_gpio_rev1[MAXPINCOUNT+1];
-const int pin_to_gpio_rev2[MAXPINCOUNT+1];
-const int pin_to_gpio_rev3[MAXPINCOUNT+1];
-const int (*pin_to_gpio)[MAXPINCOUNT+1];
+extern const int pin_to_gpio_rev1[MAXPINCOUNT+1];
+extern const int pin_to_gpio_rev2[MAXPINCOUNT+1];
+extern const int pin_to_gpio_rev3[MAXPINCOUNT+1];
+extern const int (*pin_to_gpio)[MAXPINCOUNT+1];
 #define MAXGPIOCOUNT 255  //odroid added
-int gpio_direction[MAXGPIOCOUNT+1];  //odroid change 54->255 to accommodate XU4 gpio numbers as index
-rpi_info rpiinfo;
-int setup_error;
-int module_setup;
-int check_gpio_priv(void);
-int get_gpio_number(int channel, unsigned int *gpio);
+extern int gpio_direction[MAXGPIOCOUNT+1];  //odroid change 54->255 to accommodate XU4 gpio numbers as index
+extern rpi_info rpiinfo;
+extern int setup_error;
+extern int module_setup;
+extern int check_gpio_priv(void);
+extern int get_gpio_number(int channel, unsigned int *gpio);
+
+#endif

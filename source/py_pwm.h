@@ -20,5 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-PyTypeObject PWMType;
-PyTypeObject *PWM_init_PWMType(void);
+#ifndef __PY_PWM_H
+#define __PY_PWM_H
+
+extern PyTypeObject PWMType;
+extern PyTypeObject *PWM_init_PWMType(void);
+
+#endif
